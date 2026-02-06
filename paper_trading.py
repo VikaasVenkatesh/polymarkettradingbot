@@ -121,7 +121,7 @@ class PolymarketPaperTrading:
         
         conn.close()
     
-    # ==================== REAL POLYMARKET API CALLS ====================
+
     
     def get_live_markets(self, limit: int = 50, closed: bool = False) -> List[Dict]:
         """Get real active markets from Polymarket"""
@@ -174,7 +174,7 @@ class PolymarketPaperTrading:
         else:
             return market.get('no_price', 0.5)
     
-    # ==================== PAPER TRADING FUNCTIONS ====================
+   
     
     def get_account_balance(self) -> float:
         """Get current paper account balance"""
@@ -404,7 +404,7 @@ class PolymarketPaperTrading:
         
         return positions
     
-    # ==================== TRADER TRACKING ====================
+
     
     def add_trader_to_track(self, address: str, nickname: str = None):
         """Add a trader to copy"""
@@ -709,15 +709,14 @@ if __name__ == "__main__":
     print("⏱️  Duration: Run for 7 days")
     
     runner = Week1Runner()
-    
-    # Setup traders
+   
     setup_traders(runner.paper_trader)
     
-    # Show initial portfolio
+
     runner.print_summary()
     
     print("\n" + "="*70)
     input("\n⏸️  Press ENTER to start continuous monitoring (Ctrl+C to stop)...")
     
-    # Run continuous monitoring
+
     runner.run_continuous()

@@ -162,7 +162,7 @@ quick_check.py          # Status checker script
 ### Analyze Your Results
 Run the quick check script to see final performance:
 ```bash
-python quick_check.py
+python quick_check.py  (Run this command in bash shell, don't actually copy the word bash)
 ```
 
 ## Troubleshooting

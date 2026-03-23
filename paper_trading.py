@@ -636,7 +636,7 @@ class Week1Runner:
     def run_continuous(self):
         """Run continuously with periodic scans"""
         logging.info("="*70)
-        logging.info("🚀 WEEK 1 PAPER TRADING - STARTING")
+        logging.info("WEEK 1 PAPER TRADING - STARTING")
         logging.info("="*70)
         logging.info(f"💵 Initial capital: $100,000")
         logging.info(f"🔄 Scan interval: {self.scan_interval} seconds")

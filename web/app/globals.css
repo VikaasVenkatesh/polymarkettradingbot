@@ -1,0 +1,76 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #131824;
+  --panel-2: #1a2030;
+  --line: #252d40;
+  --text: #e6e9f0;
+  --muted: #8a93a8;
+  --accent: #4f8cff;
+  --good: #2fbf71;
+  --bad: #f0616d;
+  --warn: #e8a33d;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+h1, h2, h3, p { margin: 0; }
+a { color: var(--accent); }
+
+.shell { max-width: 1240px; margin: 0 auto; padding: 20px 16px 60px; }
+.topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.topbar h1 { font-size: 18px; font-weight: 650; margin-right: auto; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+.pill { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.live { color: #fff; background: var(--bad); border-color: var(--bad); }
+.pill.paper { color: var(--accent); border-color: var(--accent); }
+.pill.on { color: var(--good); border-color: var(--good); }
+
+.banner { border: 1px solid var(--warn); color: var(--warn); background: rgba(232,163,61,.08); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.error { color: var(--bad); margin-top: 8px; }
+.ok { color: var(--good); margin-top: 8px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.tile .label { color: var(--muted); font-size: 12px; }
+.tile .value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+.grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
+.card > .muted { margin-bottom: 12px; }
+
+label.field { display: block; margin-top: 12px; font-size: 12px; color: var(--muted); }
+input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+  width: 100%; margin-top: 4px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text); font: inherit;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+label.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; cursor: pointer; }
+label.check input { margin-top: 3px; }
+button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+button:disabled { opacity: .55; cursor: default; }
+button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th.num { text-align: right; }
+td.wrap { min-width: 180px; }
+.empty { color: var(--muted); padding: 10px 0 2px; }
+.dim td { opacity: .5; }
+
+.auth { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
+.auth h1 { font-size: 22px; margin-bottom: 6px; }
+.auth .card { margin-top: 18px; }
+.linkish { background: none; border: 0; color: var(--accent); padding: 0; font-weight: 500; }

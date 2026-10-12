@@ -20,7 +20,9 @@ pip install requests
 ```
 
 ### 3. Run the Bot
-``` bash python week1_paper_trading.py ```
+```bash
+python paper_trading.py
+```
 
 ### 4. Add Trader Addresses
 When prompted, add trader wallet addresses. Find them at:
@@ -73,7 +75,7 @@ sqlite3 week1_paper.db "SELECT market_question, outcome, size, unrealized_pnl FR
 screen -S polymarket
 
 # Run the bot
-python week1_paper_trading.py
+python paper_trading.py
 
 # Detach from screen (keeps it running)
 # Press: Ctrl+A, then D
@@ -88,13 +90,13 @@ screen -r polymarket
 ### Option 2: Using nohup
 ```bash
 # Run in background
-nohup python week1_paper_trading.py > output.log 2>&1 &
+nohup python paper_trading.py > output.log 2>&1 &
 
 # Check if it's running
-ps aux | grep week1_paper
+ps aux | grep paper_trading
 
 # Stop the bot
-pkill -f week1_paper_trading.py
+pkill -f paper_trading.py
 ```
 
 ---
@@ -124,7 +126,7 @@ scan_interval = 300  # 5 minutes between scans
 ```
 
 ### Adjusting Copy Size
-To copy more/less of each trade, edit this line in `week1_paper_trading.py`:
+To copy more/less of each trade, edit this line in `paper_trading.py`:
 ```python
 self.bot = CopyTradingBot(self.paper_trader, copy_ratio=0.02)  # Change 0.02 to your preference
 ```
@@ -181,8 +183,8 @@ python quick_check.py  (Run this command in bash shell, don't actually copy the 
 ```bash
 # If you get "database is locked" errors:
 # Make sure only one instance of the bot is running
-pkill -f week1_paper_trading.py
-python week1_paper_trading.py
+pkill -f paper_trading.py
+python paper_trading.py
 ```
 
 ### Want to Reset and Start Over
@@ -191,7 +193,7 @@ python week1_paper_trading.py
 rm week1_paper.db week1_trading.log
 
 # Run bot again
-python week1_paper_trading.py
+python paper_trading.py
 ```
 
 ---

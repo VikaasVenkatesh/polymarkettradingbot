@@ -1,4 +1,4 @@
-# week1_paper_trading.py
+# paper_trading.py
 
 import requests
 import json
@@ -26,6 +26,7 @@ class PolymarketPaperTrading:
     def __init__(self, db_path: str = "week1_paper.db", initial_balance: float = 100000):
         self.base_url = "https://clob.polymarket.com"
         self.gamma_url = "https://gamma-api.polymarket.com"
+        self.data_url = "https://data-api.polymarket.com"
         self.db_path = db_path
         self.initial_balance = initial_balance
         
@@ -86,9 +87,14 @@ class PolymarketPaperTrading:
                 address TEXT PRIMARY KEY,
                 nickname TEXT,
                 added_at TEXT,
-                total_copied_trades INTEGER DEFAULT 0
+                total_copied_trades INTEGER DEFAULT 0,
+                baselined INTEGER DEFAULT 0
             )
         """)
+        
+        cursor.execute("PRAGMA table_info(tracked_traders)")
+        if 'baselined' not in [col[1] for col in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE tracked_traders ADD COLUMN baselined INTEGER DEFAULT 0")
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS trader_positions_snapshot (
@@ -141,27 +147,36 @@ class PolymarketPaperTrading:
     def get_live_market_details(self, condition_id: str) -> Optional[Dict]:
         """Get real market details"""
         try:
-            response = requests.get(f"{self.gamma_url}/markets/{condition_id}", timeout=10)
+            response = requests.get(
+                f"{self.gamma_url}/markets",
+                params={'condition_ids': condition_id},
+                timeout=10
+            )
             response.raise_for_status()
-            return response.json()
+            markets = response.json()
+            return markets[0] if markets else None
         except Exception as e:
             logging.error(f"Error fetching market {condition_id}: {e}")
             return None
     
-    def get_live_trader_positions(self, address: str) -> List[Dict]:
-        """Get real trader positions"""
+    def get_live_trader_positions(self, address: str) -> Optional[List[Dict]]:
+        """Get real trader positions (None if the request failed)"""
         try:
             response = requests.get(
-                f"{self.gamma_url}/positions",
-                params={'user': address},
+                f"{self.data_url}/positions",
+                params={'user': address, 'limit': 500},
                 timeout=10
             )
             response.raise_for_status()
             data = response.json()
-            return data if isinstance(data, list) else []
+            if not isinstance(data, list):
+                return []
+            for pos in data:
+                pos['market'] = pos.get('conditionId')
+            return data
         except Exception as e:
             logging.error(f"Error fetching trader positions for {address}: {e}")
-            return []
+            return None
     
     def get_current_market_price(self, market_id: str, outcome: str = "YES") -> Optional[float]:
         """Get current market price for an outcome"""
@@ -169,10 +184,13 @@ class PolymarketPaperTrading:
         if not market:
             return None
         
-        if outcome == "YES":
-            return market.get('yes_price', 0.5)
-        else:
-            return market.get('no_price', 0.5)
+        try:
+            outcomes = json.loads(market.get('outcomes') or '[]')
+            prices = json.loads(market.get('outcomePrices') or '[]')
+            return float(prices[outcomes.index(outcome)])
+        except (ValueError, IndexError, TypeError):
+            logging.error(f"No price for outcome {outcome!r} in market {market_id}")
+            return None
     
    
     
@@ -321,7 +339,7 @@ class PolymarketPaperTrading:
             
             current_price = self.get_current_market_price(market_id, outcome)
             
-            if current_price:
+            if current_price is not None:
                 unrealized_pnl = (current_price - entry_price) * size
                 
                 cursor.execute("""
@@ -449,7 +467,8 @@ class PolymarketPaperTrading:
         
         snapshot_time = datetime.now().isoformat()
         
-        for pos in positions:
+        # An empty marker row records a scan where the trader held nothing
+        for pos in positions or [{}]:
             try:
                 cursor.execute("""
                     INSERT INTO trader_positions_snapshot 
@@ -460,11 +479,12 @@ class PolymarketPaperTrading:
             except sqlite3.IntegrityError:
                 pass
         
+        cursor.execute("UPDATE tracked_traders SET baselined = 1 WHERE address = ?", (address,))
         conn.commit()
         conn.close()
     
-    def detect_new_positions(self, address: str, current_positions: List[Dict]) -> List[Dict]:
-        """Compare current positions with last snapshot to find new ones"""
+    def get_last_snapshot(self, address: str) -> Optional[set]:
+        """(market_id, outcome) pairs from the trader's last snapshot, None if never scanned"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -480,9 +500,18 @@ class PolymarketPaperTrading:
         """, (address, address))
         
         last_positions = cursor.fetchall()
+        
+        cursor.execute("SELECT added_at FROM tracked_traders WHERE address = ? AND baselined = 1", (address,))
+        baselined = cursor.fetchone() is not None
         conn.close()
         
-        last_pos_set = {(p[0], p[1]) for p in last_positions}
+        if not baselined:
+            return None
+        return {(p[0], p[1]) for p in last_positions if p[0] is not None}
+    
+    def detect_new_positions(self, address: str, current_positions: List[Dict]) -> List[Dict]:
+        """Compare current positions with last snapshot to find new ones"""
+        last_pos_set = self.get_last_snapshot(address) or set()
         
         new_positions = []
         for pos in current_positions:
@@ -520,9 +549,20 @@ class CopyTradingBot:
             
             current_positions = self.trader.get_live_trader_positions(address)
             
-            if not current_positions:
-                logging.info(f"   No positions found")
+            if current_positions is None:
                 continue
+            
+            last_snapshot = self.trader.get_last_snapshot(address)
+            
+            if last_snapshot is None:
+                # First scan: record what they already hold, copy only what comes after
+                logging.info(f"   Baseline recorded ({len(current_positions)} existing position(s))")
+                self.trader.save_trader_snapshot(address, current_positions)
+                continue
+            
+            current_set = {(p.get('market'), p.get('outcome')) for p in current_positions}
+            for market_id, outcome in last_snapshot - current_set:
+                self.close_copied_position(nickname, market_id, outcome, results)
             
             new_positions = self.trader.detect_new_positions(address, current_positions)
             
@@ -534,12 +574,7 @@ class CopyTradingBot:
                 outcome = pos.get('outcome')
                 their_size = float(pos.get('size', 0))
                 
-                market = self.trader.get_live_market_details(market_id)
-                
-                if not market:
-                    continue
-                
-                question = market.get('question', 'Unknown Market')
+                question = pos.get('title') or 'Unknown Market'
                 
                 our_size = their_size * self.copy_ratio
                 
@@ -549,15 +584,16 @@ class CopyTradingBot:
                 logging.info(f"\n   🎯 Copying position:")
                 logging.info(f"      Market: {question[:60]}")
                 logging.info(f"      Outcome: {outcome}")
-                logging.info(f"      Their size: ${their_size:.2f}")
-                logging.info(f"      Our size: ${our_size:.2f}")
+                logging.info(f"      Their size: {their_size:.2f} shares")
+                logging.info(f"      Our size: {our_size:.2f} shares")
                 
                 result = self.trader.execute_paper_trade(
                     market_id=market_id,
                     market_question=question,
                     outcome=outcome,
                     side='BUY',
-                    size=our_size
+                    size=our_size,
+                    token_id=pos.get('asset')
                 )
                 
                 if result['success']:
@@ -585,6 +621,34 @@ class CopyTradingBot:
             self.trader.save_trader_snapshot(address, current_positions)
         
         return results
+
+
+    def close_copied_position(self, nickname: str, market_id: str, outcome: str, results: list):
+        """Sell our copy of a position the trader has exited"""
+        conn = sqlite3.connect(self.trader.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT market_question, size, token_id FROM positions
+            WHERE market_id = ? AND outcome = ? AND status = 'OPEN'
+        """, (market_id, outcome))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        for question, size, token_id in rows:
+            logging.info(f"\n   🚪 {nickname} exited: {question[:60]} ({outcome})")
+            result = self.trader.execute_paper_trade(
+                market_id=market_id,
+                market_question=question,
+                outcome=outcome,
+                side='SELL',
+                size=size,
+                token_id=token_id
+            )
+            if result['success']:
+                logging.info(f"      ✅ Sold @ ${result['price']:.3f}, P&L ${result['realized_pnl']:+.2f}")
+            else:
+                logging.error(f"      ❌ Failed: {result.get('error')}")
+            results.append({'trader': nickname, 'position': {'market': market_id, 'outcome': outcome}, 'result': result})
 
 
 class Week1Runner:

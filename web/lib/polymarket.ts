@@ -24,16 +24,24 @@ export type Book = {
   minOrderSize: number;
 };
 
-async function getJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+async function getJson(url: string, timeoutMs = 10_000): Promise<unknown> {
+  let res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+  // Rate limited: back off once before giving up.
+  if (res.status === 429) {
+    await new Promise((r) => setTimeout(r, 2000));
+    res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+  }
   if (!res.ok) throw new Error(`${res.status} from ${new URL(url).pathname}`);
   return res.json();
 }
 
-/** This week's most profitable traders. */
-export async function fetchLeaderboard(limit: number): Promise<Trader[]> {
+export const PERIODS = ["DAY", "WEEK", "MONTH", "ALL"] as const;
+export type Period = (typeof PERIODS)[number];
+
+/** The most profitable traders over the period, as shown on polymarket.com/leaderboard. */
+export async function fetchLeaderboard(period: Period, limit: number): Promise<Trader[]> {
   const rows = (await getJson(
-    `${DATA_API}/v1/leaderboard?timePeriod=WEEK&orderBy=PNL&limit=${limit}`,
+    `${DATA_API}/v1/leaderboard?timePeriod=${period}&orderBy=PNL&limit=${limit}`,
   )) as Record<string, unknown>[];
   return rows.map((r, i) => ({
     rank: i + 1,
@@ -48,6 +56,7 @@ export async function fetchLeaderboard(limit: number): Promise<Trader[]> {
 export async function fetchTraderPositions(address: string): Promise<TraderPosition[]> {
   const rows = (await getJson(
     `${DATA_API}/positions?user=${address}&limit=500&sortBy=CURRENT&sortDirection=DESC`,
+    25_000, // traders with hundreds of positions can take well over ten seconds
   )) as Record<string, unknown>[];
   if (!Array.isArray(rows)) throw new Error("unexpected positions payload");
   return rows.map((r) => ({

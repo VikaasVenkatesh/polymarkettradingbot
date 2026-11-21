@@ -2,6 +2,7 @@ import { currentUserId } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { liveTradingEnabled, MAX_POSITIONS, MAX_TRADERS, type Settings } from "@/lib/engine";
 import { serverGeo, visitorRestricted } from "@/lib/geo";
+import { PERIODS, type Period } from "@/lib/polymarket";
 
 const bad = (error: string, status = 400) => Response.json({ error }, { status });
 const int = (v: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(v) || lo)));
@@ -15,6 +16,8 @@ export async function POST(req: Request) {
   const budget = Number(body.budget_usd);
   if (!Number.isFinite(budget) || budget < 0 || budget > 1_000_000) return bad("Budget must be between 0 and 1,000,000.");
   const live = Boolean(body.live);
+  const weighting = body.weighting === "equal" ? "equal" : "profit";
+  const period: Period = PERIODS.includes(body.period) ? body.period : "MONTH";
 
   if (live && !current.live) {
     if (!liveTradingEnabled()) return bad("Live trading is switched off on this deployment.");
@@ -32,8 +35,10 @@ export async function POST(req: Request) {
   }
 
   await q(
-    "UPDATE settings SET budget_usd = $1, top_traders = $2, top_positions = $3, live = $4, paused = $5 WHERE user_id = $6",
-    [budget, int(body.top_traders, 1, MAX_TRADERS), int(body.top_positions, 1, MAX_POSITIONS), live, Boolean(body.paused), userId],
+    `UPDATE settings SET budget_usd = $1, top_traders = $2, top_positions = $3, live = $4, paused = $5,
+       weighting = $6, period = $7 WHERE user_id = $8`,
+    [budget, int(body.top_traders, 1, MAX_TRADERS), int(body.top_positions, 1, MAX_POSITIONS), live, Boolean(body.paused),
+     weighting, period, userId],
   );
   return Response.json({ ok: true });
 }

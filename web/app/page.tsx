@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Settings = { budget_usd: number; top_traders: number; top_positions: number; live: boolean; paused: boolean };
+type Settings = { budget_usd: number; top_traders: number; top_positions: number; live: boolean; paused: boolean; weighting: "profit" | "equal"; period: "DAY" | "WEEK" | "MONTH" | "ALL" };
 type Wallet = { address: string; funder_address: string | null; signature_type: number };
 type Trader = { rank: number; address: string; name: string; pnl: number; volume: number };
-type Target = { trader: string; address: string; title: string; outcome: string; price: number; usd: number; held: boolean };
+type Target = { trader: string; title: string; outcome: string; price: number; usd: number; held: boolean };
 type Position = { id: number; trader_name: string; title: string; outcome: string; shares: number; cost_usd: number; price: number; value: number };
 type Order = { id: number; side: string; title: string; outcome: string; trader_name: string; usd: number; shares: number; price: number; mode: string; ok: boolean; detail: string | null; created_at: string };
 type State = {
@@ -16,6 +16,8 @@ type State = {
   refreshedAt: string | null;
   lastScanAt: string | null;
   targets: Target[];
+  following: Record<string, { weight: number; usd: number }>;
+  skipped: Record<string, string>;
   open: Position[];
   realized: number;
   orders: Order[];
@@ -117,25 +119,44 @@ function SettingsCard({ state, reload }: { state: State; reload: () => void }) {
     }
   }
 
-  const perTrader = form.top_traders > 0 ? form.budget_usd / form.top_traders : 0;
-
   return (
     <form className="card" onSubmit={save}>
       <h2>Strategy</h2>
-      <p className="muted small">Your budget is split evenly across the top traders, then across each trader&apos;s largest positions by value.</p>
+      <p className="muted small">
+        Traders are taken from the leaderboard in rank order. One with nothing worth copying is replaced by the next, and each
+        trader&apos;s share is split across their largest positions by value.
+      </p>
       <label className="field">
         Budget to trade with (USD)
         <input type="number" min={0} step="1" value={form.budget_usd} onChange={(e) => setForm({ ...form, budget_usd: Number(e.target.value) })} />
       </label>
       <label className="field">
-        Top traders to follow
+        Leaderboard
+        <select value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value as Settings["period"] })}>
+          <option value="DAY">Today&apos;s profit (list changes daily)</option>
+          <option value="WEEK">Weekly profit</option>
+          <option value="MONTH">Monthly profit (Polymarket&apos;s default view)</option>
+          <option value="ALL">All-time profit</option>
+        </select>
+      </label>
+      <label className="field">
+        Split between traders
+        <select value={form.weighting} onChange={(e) => setForm({ ...form, weighting: e.target.value as Settings["weighting"] })}>
+          <option value="profit">By profit: bigger winners get more, 40% cap each</option>
+          <option value="equal">Equally</option>
+        </select>
+      </label>
+      <label className="field">
+        Most traders to follow
         <input type="number" min={1} max={20} value={form.top_traders} onChange={(e) => setForm({ ...form, top_traders: Number(e.target.value) })} />
       </label>
       <label className="field">
-        Positions to copy per trader
+        Most positions to copy per trader
         <input type="number" min={1} max={10} value={form.top_positions} onChange={(e) => setForm({ ...form, top_positions: Number(e.target.value) })} />
       </label>
-      <p className="small muted" style={{ marginTop: 8 }}>{usd(perTrader)} per trader</p>
+      <p className="small muted" style={{ marginTop: 8 }}>
+        Fewer are used when the budget is small: a trader needs at least $5 and a position at least $2.
+      </p>
 
       <label className="check">
         <input type="checkbox" checked={!form.paused} onChange={(e) => setForm({ ...form, paused: !e.target.checked })} />
@@ -380,21 +401,28 @@ function Dashboard({ state, reload }: { state: State; reload: () => void }) {
           </section>
 
           <section className="card">
-            <h2>This week&apos;s leaderboard</h2>
-            <p className="muted small">Refreshed weekly from Polymarket. Last refresh {when(state.refreshedAt)}.</p>
+            <h2>Leaderboard · {{ DAY: "today's", WEEK: "weekly", MONTH: "monthly", ALL: "all-time" }[settings.period]} profit</h2>
+            <p className="muted small">
+              Following {Object.keys(state.following).length} of {traders.length}. Refreshed {settings.period === "DAY" ? "daily" : "every Monday"} from Polymarket, last on {when(state.refreshedAt)}.
+            </p>
             {traders.length ? (
               <div className="scroll">
                 <table>
-                  <thead><tr><th>#</th><th>Trader</th><th className="num">Weekly profit</th><th className="num">Volume</th><th>Following</th></tr></thead>
+                  <thead><tr><th>#</th><th>Trader</th><th className="num">Profit</th><th className="num">Weight</th><th className="num">Budget</th><th>Status</th></tr></thead>
                   <tbody>
-                    {traders.map((t) => (
-                      <tr key={t.rank} className={t.rank > settings.top_traders ? "dim" : ""}>
-                        <td>{t.rank}</td>
-                        <td><a href={`https://polymarket.com/profile/${t.address}`} target="_blank" rel="noreferrer">{t.name}</a></td>
-                        <td className="num good">{usd(t.pnl)}</td><td className="num">{usd(t.volume)}</td>
-                        <td>{t.rank <= settings.top_traders ? "Yes" : ""}</td>
-                      </tr>
-                    ))}
+                    {traders.map((t) => {
+                      const f = state.following[t.address];
+                      return (
+                        <tr key={t.rank} className={f ? "" : "dim"}>
+                          <td>{t.rank}</td>
+                          <td><a href={`https://polymarket.com/profile/${t.address}`} target="_blank" rel="noreferrer">{t.name.length > 22 ? `${t.name.slice(0, 10)}…` : t.name}</a></td>
+                          <td className="num good">{usd(t.pnl)}</td>
+                          <td className="num">{f ? `${(f.weight * 100).toFixed(1)}%` : ""}</td>
+                          <td className="num">{f ? usd(f.usd) : ""}</td>
+                          <td className={f ? "good" : "muted"}>{f ? "Following" : state.skipped[t.address] ?? ""}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
